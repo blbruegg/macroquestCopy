@@ -15,11 +15,11 @@
 #include "pch.h"
 #include "lua_Bindings.h"
 
-#include <imgui/imgui.h>
-#include <imgui/imgui_internal.h>
-#include <imgui/imgui_stacklayout.h>
-#include <imgui/misc/cpp/imgui_stdlib.h>
-#include <sol/sol.hpp>
+#include "imgui/imgui.h"
+#include "imgui/imgui_internal.h"
+#include "imgui/imgui_stacklayout.h"
+#include "imgui/misc/cpp/imgui_stdlib.h"
+#include "sol/sol.hpp"
 
 #include <optional>
 #include <string>
@@ -567,11 +567,12 @@ sol::table RegisterBindings_ImGui(sol::state_view state)
 		// Switch font and set size
 		[](ImFont* font, float fontSize) { ImGui::PushFont(font, fontSize); },
 		// Switch font and set to its default font size
-		[](ImFont* font) { ImGui::PushFont(font, font ? font->LegacySize : 0.0f); },
-		// Reset to default font and font size
-		[]() { ImGui::PushFont(nullptr, 0.0f); }
+		[](ImFont* font) { ImGui::PushFont(font ? font : ImGui::GetDefaultFont() , font ? font->LegacySize : 0.0f); },
+		// Revert to default font and size
+		[]() { ImGui::PushFont(ImGui::GetDefaultFont(), ImGui::GetDefaultFont()->LegacySize); }
 	));
 	ImGui.set_function("PopFont", &ImGui::PopFont);
+	ImGui.set_function("GetDefaultFont", &ImGui::GetDefaultFont);
 	ImGui.set_function("GetFont", &ImGui::GetFont);
 	ImGui.set_function("GetFontSize", &ImGui::GetFontSize);
 	#pragma endregion
@@ -676,9 +677,9 @@ sol::table RegisterBindings_ImGui(sol::state_view state)
 	));
 	ImGui.set_function("PopID", &ImGui::PopID);
 	ImGui.set_function("GetID", sol::overload(
-		[](std::string_view str_id) { ImGui::GetID(str_id.data(), str_id.data() + str_id.length()); },
-		[](int int_id) { ImGui::GetID(int_id); },
-		[](sol::object obj) { ImGui::GetID(obj.pointer()); }
+		[](std::string_view str_id) { return ImGui::GetID(str_id.data(), str_id.data() + str_id.length()); },
+		[](int int_id) { return ImGui::GetID(int_id); },
+		[](sol::object obj) { return ImGui::GetID(obj.pointer()); }
 	));
 	#pragma endregion
 
@@ -912,7 +913,7 @@ sol::table RegisterBindings_ImGui(sol::state_view state)
 	#pragma region Color Utilities
 	// Color Utilities
 	ImGui.set_function("ColorConvertU32ToFloat4", ColorConvertU32ToFloat4);
-	ImGui.set_function("ColorConvertFloat4ToU32", ColorConvertFloat4ToU32);
+	ImGui.set_function("ColorConvertFloat4ToU32", sol::overload(ImGui::ColorConvertFloat4ToU32, ColorConvertFloat4ToU32));
 	ImGui.set_function("ColorConvertRGBtoHSV", [](float r, float g, float b) { float h, s, v; ImGui::ColorConvertRGBtoHSV(r, g, b, h, s, v); return std::make_tuple(h, s, v); });
 	ImGui.set_function("ColorConvertHSVtoRGB", [](float h, float s, float v) { float r, g, b; ImGui::ColorConvertHSVtoRGB(h, s, v, r, g, b); return std::make_tuple(r, g, b); });
 	state.set_function("IM_COL32", [](int colR, int colG, int colB, std::optional<int> colA) -> int { return IM_COL32(colR, colG, colB, colA.value_or(255)); });
@@ -1008,6 +1009,9 @@ sol::table RegisterBindings_ImGui(sol::state_view state)
 
 	bindings::RegisterBindings_ImGuiWidgets(ImGui);
 	bindings::RegisterBindings_ImGuiCustom(ImGui);
+
+	// Helpers
+	state.set_function("ImHashStr", [](std::string_view sv, std::optional<ImGuiID> seed) { return ImHashStr(sv.data(), sv.size(), seed.value_or(0)); });
 
 	return ImGui;
 }

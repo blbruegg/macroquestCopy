@@ -29,12 +29,8 @@
 
 #include <mq/Plugin.h>
 #include <mq/utils/Args.h>
-#include <fmt/format.h>
-
-#pragma warning(push)
-#pragma warning(disable: 4244)
 #include <fmt/chrono.h>
-#pragma warning(pop)
+#include <fmt/format.h>
 
 #include <yaml-cpp/yaml.h>
 
@@ -83,10 +79,33 @@ static ImGuiFileDialog* s_moduleDirDialog = nullptr;
 static imgui::TextEditor* s_luaCodeViewer = nullptr;
 
 // use a vector for s_running because we need to iterate it every pulse, and find only if a command is issued
-std::vector<std::shared_ptr<LuaThread>> s_running;
-std::vector<std::shared_ptr<LuaThread>> s_pending;
+struct RunningScript
+{
+	std::shared_ptr<LuaThread> mainThread;
+	int pid = 0;
+	std::string name;
 
-std::unordered_map<uint32_t, LuaThreadInfo> s_infoMap;
+	bool dead = false;
+};
+
+struct GlobalScriptState
+{
+	std::vector<std::shared_ptr<LuaThread>> pendingScripts;
+	std::vector<RunningScript> runningScripts;
+
+	std::unordered_map<uint32_t, LuaThreadInfo> infoMap;
+	bool shuttingDown = false;
+
+	~GlobalScriptState()
+	{
+		shuttingDown = true;
+
+		pendingScripts.clear();
+		runningScripts.clear();
+		infoMap.clear();
+	}
+};
+GlobalScriptState* s_globalState = nullptr;
 
 static void RegisterBuiltInModules()
 {
@@ -133,6 +152,11 @@ static void RegisterBuiltInModules()
 	{
 		return sol::make_object(s, bindings::RegisterBindings_Zep(s));
 	});
+
+	register_builtin("ImAnim", [](const sol::this_state s)
+	{
+		return sol::make_object(s, bindings::RegisterBindings_ImAnim(s));
+	});
 }
 
 #pragma region Shared Function Definitions
@@ -151,8 +175,8 @@ void EndScript(const std::shared_ptr<LuaThread>& thread, const LuaThread::RunRes
 			thread->GetName().c_str(), thread->GetPID(), static_cast<int>(result.first));
 	}
 
-	auto fin_it = s_infoMap.find(thread->GetPID());
-	if (fin_it != s_infoMap.end())
+	auto fin_it = s_globalState->infoMap.find(thread->GetPID());
+	if (fin_it != s_globalState->infoMap.end())
 	{
 		if (result.second)
 			fin_it->second.SetResult(*result.second, thread->GetEvaluateResult());
@@ -163,13 +187,16 @@ void EndScript(const std::shared_ptr<LuaThread>& thread, const LuaThread::RunRes
 
 std::shared_ptr<LuaThread> GetLuaThreadByPID(int pid)
 {
-	for (const auto& thread : s_running)
+	for (const RunningScript& thread : s_globalState->runningScripts)
 	{
-		if (thread && thread->GetPID() == pid)
-			return thread;
+		if (thread.dead)
+			continue;
+
+		if (thread.pid == pid)
+			return thread.mainThread;
 	}
 
-	for (const auto& thread : s_pending)
+	for (const auto& thread : s_globalState->pendingScripts)
 	{
 		if (thread && thread->GetPID() == pid)
 			return thread;
@@ -180,56 +207,60 @@ std::shared_ptr<LuaThread> GetLuaThreadByPID(int pid)
 
 void OnLuaThreadDestroyed(LuaThread* destroyedThread)
 {
-	s_running.erase(std::remove_if(s_running.begin(), s_running.end(),
-		[&](const std::shared_ptr<LuaThread>& thread) -> bool
+	for (RunningScript& script : s_globalState->runningScripts)
+	{
+		if (script.dead)
+			continue;
+
+		if (script.mainThread.get() != destroyedThread
+			&& script.mainThread->IsDependency(destroyedThread))
 		{
-			if (thread && thread.get() != destroyedThread
-				&& thread->IsDependency(destroyedThread))
-			{
-				// Exit the thread immediately
-				thread->Exit(lua::LuaThreadExitReason::DependencyRemoved);
+			// Exit the thread immediately
+			script.mainThread->Exit(lua::LuaThreadExitReason::DependencyRemoved);
 
-				EndScript(thread, { sol::thread_status::dead, std::nullopt }, false);
+			EndScript(script.mainThread, { sol::thread_status::dead, std::nullopt }, false);
 
-				WriteChatStatus("Running lua script '%s' with PID %d terminated due to stopping of '%s'",
-					thread->GetName().c_str(), thread->GetPID(), destroyedThread->GetName().c_str());
+			WriteChatStatus("Running lua script '%s' with PID %d terminated due to stopping of '%s'",
+				script.name.c_str(), script.pid, destroyedThread->GetName().c_str());
 
-				return true;
-			}
-			return false;
-		}), end(s_running));
+			script.dead = true;
+			script.mainThread.reset();
+		}
+	}
 }
 
 void OnLuaTLORemoved(MQTopLevelObject* tlo, int pidOwner)
 {
-	auto iter = std::find_if(begin(mq::lua::s_running), end(mq::lua::s_running),
-		[pidOwner](const auto& thread) { return thread && thread->GetPID() == pidOwner; });
+	auto iter = std::ranges::find_if(s_globalState->runningScripts,
+		[pidOwner](const auto& thread) { return thread.pid == pidOwner; });
 
-	s_running.erase(std::remove_if(s_running.begin(), s_running.end(),
-		[&](const std::shared_ptr<LuaThread>& thread) -> bool
+	for (RunningScript& script : s_globalState->runningScripts)
+	{
+		if (script.dead || script.pid == pidOwner)
+			continue;
+
+		if (script.mainThread->IsDependency(tlo))
 		{
-			if (thread && thread->GetPID() != pidOwner
-				&& thread->IsDependency(tlo))
+			// Exit the thread immediately
+			script.mainThread->Exit(lua::LuaThreadExitReason::DependencyRemoved);
+
+			EndScript(script.mainThread, { sol::thread_status::dead, std::nullopt }, false);
+
+			if (iter != end(s_globalState->runningScripts))
 			{
-				// Exit the thread immediately
-				thread->Exit(lua::LuaThreadExitReason::DependencyRemoved);
-
-				EndScript(thread, { sol::thread_status::dead, std::nullopt }, false);
-
-				if (iter != end(mq::lua::s_running))
-				{
-					WriteChatStatus("Running lua script '%s' with PID %d terminated due to removal of '%s' from '%s'",
-						thread->GetName().c_str(), thread->GetPID(), tlo->Name.c_str(), (*iter)->GetName().c_str());
-				}
-				else
-				{
-					WriteChatStatus("Running lua script '%s' with PID %d terminated due to removal of '%s'",
-						thread->GetName().c_str(), thread->GetPID(), tlo->Name.c_str());
-				}
-				return true;
+				WriteChatStatus("Running lua script '%s' with PID %d terminated due to removal of '%s' from '%s'",
+					script.name.c_str(), script.pid, tlo->Name.c_str(), iter->name.c_str());
 			}
-			return false;
-		}), end(s_running));
+			else
+			{
+				WriteChatStatus("Running lua script '%s' with PID %d terminated due to removal of '%s'",
+					script.name.c_str(), script.pid, tlo->Name.c_str());
+			}
+
+			script.dead = true;
+			script.mainThread.reset();
+		}
+	}
 }
 
 #pragma endregion
@@ -409,8 +440,8 @@ public:
 		{
 			Dest.Type = pStringType;
 			std::vector<std::string> pids;
-			std::transform(s_running.cbegin(), s_running.cend(), std::back_inserter(pids),
-				[](const std::shared_ptr<LuaThread>& thread) { return std::to_string(thread->GetPID()); });
+			std::transform(s_globalState->runningScripts.cbegin(), s_globalState->runningScripts.cend(), std::back_inserter(pids),
+				[](const RunningScript& thread) { return std::to_string(thread.pid); });
 			strcpy_s(DataTypeTemp, join(pids, ",").c_str());
 			Dest.Ptr = &DataTypeTemp[0];
 			return true;
@@ -455,12 +486,12 @@ public:
 			Dest.Type = pLuaInfoType;
 			if (!Index || !Index[0])
 			{
-				if (s_infoMap.empty())
+				if (s_globalState->infoMap.empty())
 					return false;
 
 				// grab the latest start time that has an end time
-				auto latest = s_infoMap.cbegin();
-				for (auto it = s_infoMap.cbegin(); it != s_infoMap.cend(); ++it)
+				auto latest = s_globalState->infoMap.cbegin();
+				for (auto it = s_globalState->infoMap.cbegin(); it != s_globalState->infoMap.cend(); ++it)
 				{
 					if (it->second.endTime != std::chrono::system_clock::time_point{}
 						&& it->second.startTime > latest->second.startTime)
@@ -479,20 +510,20 @@ public:
 			}
 
 			auto pid = GetIntFromString(Index, 0UL);
-			auto it = s_infoMap.end();
+			auto it = s_globalState->infoMap.end();
 			if (pid > 0UL)
 			{
-				it = std::find_if(s_infoMap.begin(), s_infoMap.end(),
+				it = std::find_if(s_globalState->infoMap.begin(), s_globalState->infoMap.end(),
 					[&pid](const auto& kv) { return kv.first == pid; });
 			}
 			else
 			{
 				std::string script(Index);
-				it = std::find_if(s_infoMap.begin(), s_infoMap.end(),
+				it = std::find_if(s_globalState->infoMap.begin(), s_globalState->infoMap.end(),
 					[&script](const auto& kv) { return ci_equals(kv.second.name, script); });
 			}
 
-			if (it != s_infoMap.end())
+			if (it != s_globalState->infoMap.end())
 			{
 				Dest.Set(it->second);
 				return true;
@@ -542,13 +573,13 @@ static uint32_t LuaRunCommand(const std::string& script, const std::vector<std::
 	//   if a script with the same name is _currently_ running, inform and exit
 	//   if a script with the same name _has previously_ run, drop from infoMap and run
 	//   otherwise, run script as normal
-	auto info_it = std::find_if(s_infoMap.begin(), s_infoMap.end(),
+	auto info_it = std::find_if(s_globalState->infoMap.begin(), s_globalState->infoMap.end(),
 		[&locationInfo](const std::pair<uint32_t, mq::lua::LuaThreadInfo>& kv)
 		{
 			return ci_equals(kv.second.name, locationInfo.canonicalName);
 		});
 
-	if (info_it != s_infoMap.end() && info_it->second.status != LuaThreadStatus::Exited)
+	if (info_it != s_globalState->infoMap.end() && info_it->second.status != LuaThreadStatus::Exited)
 	{
 		// script is currently running, inform and exit
 		WriteChatStatus("Lua script '%s' is already running, not starting another instance.",
@@ -556,24 +587,24 @@ static uint32_t LuaRunCommand(const std::string& script, const std::vector<std::
 		return 0;
 	}
 
-	if (info_it != s_infoMap.end())
+	if (info_it != s_globalState->infoMap.end())
 	{
 		// script has previously run, simply erase it because we are going to get a new entry
-		s_infoMap.erase(info_it);
+		s_globalState->infoMap.erase(info_it);
 	}
 
 	std::shared_ptr<LuaThread> entry = LuaThread::Create(&s_environment);
 	entry->SetTurbo(s_turboNum);
 	entry->EnableEvents();
 	entry->EnableImGui();
-	s_pending.push_back(entry);
+	s_globalState->pendingScripts.push_back(entry);
 
 	WriteChatStatus("Running lua script '%s' with PID %d", locationInfo.canonicalName.c_str(), entry->GetPID());
 
 	if (std::optional<LuaThreadInfo> result = entry->StartFile(locationInfo, args))
 	{
 		result->status = LuaThreadStatus::Running;
-		s_infoMap.emplace(result->pid, *result);
+		s_globalState->infoMap.emplace(result->pid, *result);
 		return result->pid;
 	}
 
@@ -582,11 +613,11 @@ static uint32_t LuaRunCommand(const std::string& script, const std::vector<std::
 
 static uint32_t LuaParseCommand(const std::string& script, std::string_view name = "lua parse")
 {
-	auto info_it = std::find_if(s_infoMap.begin(), s_infoMap.end(),
+	auto info_it = std::find_if(s_globalState->infoMap.begin(), s_globalState->infoMap.end(),
 		[&](const std::pair<uint32_t, mq::lua::LuaThreadInfo>& kv)
 		{ return kv.second.name == name && kv.second.isString; });
 
-	if (info_it != s_infoMap.end()
+	if (info_it != s_globalState->infoMap.end()
 		&& info_it->second.endTime == std::chrono::system_clock::time_point{}
 		&& name == "lua parse")
 	{
@@ -595,10 +626,10 @@ static uint32_t LuaParseCommand(const std::string& script, std::string_view name
 		return 0;
 	}
 
-	if (info_it != s_infoMap.end())
+	if (info_it != s_globalState->infoMap.end())
 	{
 		// always erase previous parse entries in the ps, it gets overcrowded otherwise
-		s_infoMap.erase(info_it);
+		s_globalState->infoMap.erase(info_it);
 	}
 
 	// Create LuaThread with mq namespace already injected.
@@ -610,7 +641,7 @@ static uint32_t LuaParseCommand(const std::string& script, std::string_view name
 		entry->SetEvaluateResult(true);
 	}
 
-	s_pending.push_back(entry);
+	s_globalState->pendingScripts.push_back(entry);
 
 	//WriteChatStatus("Running lua string with PID %d", entry->GetPID());
 
@@ -618,126 +649,154 @@ static uint32_t LuaParseCommand(const std::string& script, std::string_view name
 	if (result)
 	{
 		result->status = LuaThreadStatus::Running;
-		s_infoMap.emplace(result->pid, *result);
+		s_globalState->infoMap.emplace(result->pid, *result);
 		return result->pid;
 	}
 
 	return 0;
 }
 
-static void LuaStopCommand(std::optional<std::string> script = std::nullopt)
+static void LuaStopCommand(std::optional<std::string> scriptName = std::nullopt)
 {
-	if (script)
+	if (scriptName)
 	{
-		auto thread_it = s_running.end();
-		uint32_t pid = GetIntFromString(*script, 0UL);
+		decltype(s_globalState->runningScripts)::iterator script_iter;
+		uint32_t pid = GetIntFromString(*scriptName, 0UL);
+
 		if (pid > 0UL)
 		{
 			// Find by PID
-			thread_it = std::find_if(s_running.begin(), s_running.end(),
-				[&pid](const std::shared_ptr<LuaThread>& thread) { return thread->GetPID() == pid; });
+			script_iter = std::ranges::find_if(s_globalState->runningScripts,
+				[&pid](const RunningScript& script)
+			{
+				return !script.dead && script.pid == pid;
+			});
 		}
 		else
 		{
 			// Find By Canonical Name
-			thread_it = std::find_if(s_running.begin(), s_running.end(),
-				[&script](const std::shared_ptr<LuaThread>& thread) { return ci_equals(thread->GetName(), *script); });
+			script_iter = std::ranges::find_if(s_globalState->runningScripts,
+				[&scriptName](const RunningScript& script)
+			{
+				return !script.dead && ci_equals(script.name, *scriptName);
+			});
 
-			if (thread_it == s_running.end())
+			if (script_iter == s_globalState->runningScripts.end())
 			{
 				// Try to find this script
-				ScriptLocationInfo info = s_environment.GetScriptLocationInfo(*script);
+				ScriptLocationInfo info = s_environment.GetScriptLocationInfo(*scriptName);
+
 				if (info.found)
 				{
-					thread_it = std::find_if(s_running.begin(), s_running.end(),
-						[&info](const std::shared_ptr<LuaThread>& thread) { return ci_equals(thread->GetName(), info.canonicalName); });
+					script_iter = std::ranges::find_if(s_globalState->runningScripts,
+						[&info](const RunningScript& script)
+					{
+						return !script.dead && ci_equals(script.name, info.canonicalName);
+					});
 				}
 				else
 				{
-					std::string canonicalName = LuaEnvironmentSettings::GetCanonicalScriptName(*script, s_environment.luaDir);
+					std::string canonicalName = LuaEnvironmentSettings::GetCanonicalScriptName(*scriptName, s_environment.luaDir);
 
-					thread_it = std::find_if(s_running.begin(), s_running.end(),
-						[&canonicalName](const std::shared_ptr<LuaThread>& thread) { return ci_equals(thread->GetName(), canonicalName); });
+					script_iter = std::ranges::find_if(s_globalState->runningScripts,
+						[&canonicalName](const RunningScript& script)
+					{
+						return !script.dead && ci_equals(script.name, canonicalName);
+					});
 				}
 			}
 		}
 
-		if (thread_it != s_running.end())
+		if (script_iter != s_globalState->runningScripts.end())
 		{
-			std::shared_ptr<LuaThread>& thread = *thread_it;
+			RunningScript& script = *script_iter;
 
-			WriteChatStatus("Ending running lua script '%s' with PID %d", thread->GetName().c_str(), thread->GetPID());
+			WriteChatStatus("Ending running lua script '%s' with PID %d", script.name.c_str(), script.pid);
 
 			// this will force the coroutine to yield, and removing this thread from the vector will cause it to gc
-			thread->Exit();
+			script.mainThread->Exit();
 		}
 		else
 		{
-			WriteChatStatus("No lua script matching \"%s\" was found", script->c_str());
+			WriteChatStatus("No lua script matching \"%s\" was found", scriptName->c_str());
 		}
 	}
 	else
 	{
 		// kill all scripts
-		for (std::shared_ptr<LuaThread>& thread : s_running)
+		for (RunningScript& script : s_globalState->runningScripts)
 		{
-			thread->Exit();
+			script.mainThread->Exit();
 		}
 
 		WriteChatStatus("Ending ALL lua scripts");
 	}
 }
 
-static void LuaPauseCommand(std::optional<std::string> script, bool on, bool off)
+static void LuaPauseCommand(std::optional<std::string> scriptName, bool on, bool off)
 {
 	auto toggle = [](const std::shared_ptr<LuaThread>& thread)
 	{
 		LuaThreadStatus status = thread->Pause();
 
-		auto info = s_infoMap.find(thread->GetPID());
-		if (info != s_infoMap.end())
+		auto info = s_globalState->infoMap.find(thread->GetPID());
+		if (info != s_globalState->infoMap.end())
 		{
 			info->second.status = std::move(status);
 		}
 	};
 
-	if (script)
+	if (scriptName)
 	{
-		auto thread_it = s_running.end();
-		uint32_t pid = GetIntFromString(*script, 0UL);
+		decltype(s_globalState->runningScripts)::iterator script_iter;
+		uint32_t pid = GetIntFromString(*scriptName, 0UL);
 
 		if (pid > 0UL)
 		{
-			thread_it = std::find_if(s_running.begin(), s_running.end(),
-				[&pid](const std::shared_ptr<LuaThread>& thread) { return thread->GetPID() == pid; });
+			script_iter = std::ranges::find_if(s_globalState->runningScripts,
+				[&pid](const RunningScript& script)
+			{
+				return !script.dead && script.pid == pid;
+			});
 		}
 		else
 		{
-			thread_it = std::find_if(s_running.begin(), s_running.end(),
-				[&script](const std::shared_ptr<LuaThread>& thread) { return ci_equals(thread->GetName(), *script); });
+			script_iter = std::ranges::find_if(s_globalState->runningScripts,
+				[&scriptName](const RunningScript& script)
+			{
+				return !script.dead && ci_equals(script.name, *scriptName);
+			});
 		}
 
-		if (thread_it != s_running.end())
+		if (script_iter != s_globalState->runningScripts.end())
 		{
-			std::shared_ptr<LuaThread>& thread = *thread_it;
+			RunningScript& script = *script_iter;
+			const std::shared_ptr<LuaThread>& mainThread = script.mainThread;
 
-			if ((on && !thread->IsPaused()) || (off && thread->IsPaused()) || (!on && !off))
+			if ((on && !mainThread->IsPaused())
+				|| (off && mainThread->IsPaused())
+				|| (!on && !off))
 			{
-				toggle(thread);
+				toggle(script.mainThread);
 			}
 		}
 		else
 		{
-			WriteChatStatus("No lua script '%s' to pause/resume", script->c_str());
+			WriteChatStatus("No lua script '%s' to pause/resume", scriptName->c_str());
 		}
 	}
 	else if (on)
 	{
-		for (const auto& thread : s_running)
+		for (RunningScript& script : s_globalState->runningScripts)
 		{
-			if (!thread->IsPaused())
+			if (script.dead)
+				continue;
+
+			const std::shared_ptr<LuaThread>& mainThread = script.mainThread;
+
+			if (!mainThread->IsPaused())
 			{
-				toggle(thread);
+				toggle(mainThread);
 			}
 		}
 
@@ -745,11 +804,16 @@ static void LuaPauseCommand(std::optional<std::string> script, bool on, bool off
 	}
 	else if (off)
 	{
-		for (const auto& thread : s_running)
+		for (RunningScript& script : s_globalState->runningScripts)
 		{
-			if (thread->IsPaused())
+			if (script.dead)
+				continue;
+
+			const std::shared_ptr<LuaThread>& mainThread = script.mainThread;
+
+			if (mainThread->IsPaused())
 			{
-				toggle(thread);
+				toggle(mainThread);
 			}
 		}
 
@@ -759,27 +823,43 @@ static void LuaPauseCommand(std::optional<std::string> script, bool on, bool off
 	{
 		// try to Get the user's intention here. If all scripts are running/paused, batch toggle state.
 		// If there are any running, assume we want to pause those only.
-		auto findIter = std::find_if(s_running.cbegin(), s_running.cend(),
-			[](const std::shared_ptr<LuaThread>& thread) { return !thread->IsPaused(); });
-		if (findIter != s_running.cend())
+
+		auto findIter = std::ranges::find_if(std::as_const(s_globalState->runningScripts),
+			[](const RunningScript& script)
+		{
+			if (script.dead)
+				return false;
+
+			return !script.mainThread->IsPaused();
+		});
+
+		if (findIter != s_globalState->runningScripts.cend())
 		{
 			// have at least one running script, so pause all running scripts
-			for (const std::shared_ptr<LuaThread>& thread : s_running)
+			for (RunningScript& script : s_globalState->runningScripts)
 			{
-				if (!thread->IsPaused())
+				if (script.dead)
+					continue;
+
+				const std::shared_ptr<LuaThread>& mainThread = script.mainThread;
+
+				if (!mainThread->IsPaused())
 				{
-					toggle(thread);
+					toggle(mainThread);
 				}
 			}
 
 			WriteChatStatus("Pausing ALL running lua scripts");
 		}
-		else if (!s_running.empty())
+		else if (!s_globalState->runningScripts.empty())
 		{
 			// we have no running scripts, so restart all paused scripts
-			for (const std::shared_ptr<LuaThread>& thread : s_running)
+			for (RunningScript& script : s_globalState->runningScripts)
 			{
-				toggle(thread);
+				if (script.dead)
+					continue;
+
+				toggle(script.mainThread);
 			}
 
 			WriteChatStatus("Resuming ALL paused lua scripts");
@@ -798,12 +878,15 @@ void SetLuaDirName(const std::string& luaDir)
 	s_environment.luaDir = (std::filesystem::path(gPathMQRoot) / s_luaDirName).string();
 	s_configNode[KEY_LUA_DIR] = s_luaDirName;
 
-	for (auto& thread : s_running)
+	for (RunningScript& script : s_globalState->runningScripts)
 	{
-		thread->UpdateLuaDir(s_environment.luaDir);
+		if (script.dead)
+			continue;
+
+		script.mainThread->UpdateLuaDir(s_environment.luaDir);
 	}
 
-	for (auto& thread : s_pending)
+	for (auto& thread : s_globalState->pendingScripts)
 	{
 		thread->UpdateLuaDir(s_environment.luaDir);
 	}
@@ -861,9 +944,12 @@ static void ReadSettings()
 	if (mq::test_and_set(s_turboNum, s_configNode[KEY_TURBO_NUM].as<uint32_t>(s_turboNum)))
 	{
 		// update turbo
-		for (const std::shared_ptr<LuaThread>& thread : s_running)
+		for (RunningScript& script : s_globalState->runningScripts)
 		{
-			thread->SetTurbo(s_turboNum);
+			if (script.dead)
+				continue;
+
+			script.mainThread->SetTurbo(s_turboNum);
 		}
 	}
 
@@ -1005,7 +1091,7 @@ static void LuaPSCommand(const std::vector<std::string>& filters = {})
 
 	WriteChatStatus("|  PID  |         NAME         |    START    |     END     |   STATUS   |");
 
-	for (const auto& [pid, info] : s_infoMap)
+	for (const auto& [pid, info] : s_globalState->infoMap)
 	{
 		if (predicate(info))
 		{
@@ -1025,21 +1111,21 @@ static void LuaInfoCommand(const std::optional<std::string>& script = std::nullo
 {
 	if (script)
 	{
-		auto thread_it = s_infoMap.end();
+		auto thread_it = s_globalState->infoMap.end();
 		uint32_t pid = GetIntFromString(*script, 0UL);
 
 		if (pid > 0UL)
 		{
-			thread_it = std::find_if(s_infoMap.begin(), s_infoMap.end(),
+			thread_it = std::find_if(s_globalState->infoMap.begin(), s_globalState->infoMap.end(),
 				[&pid](const auto& kv) { return kv.first == pid; });
 		}
 		else
 		{
-			thread_it = std::find_if(s_infoMap.begin(), s_infoMap.end(),
+			thread_it = std::find_if(s_globalState->infoMap.begin(), s_globalState->infoMap.end(),
 				[&script](const auto& kv) { return ci_equals(kv.second.name, *script); });
 		}
 
-		if (thread_it != s_infoMap.end())
+		if (thread_it != s_globalState->infoMap.end())
 		{
 			const LuaThreadInfo& info = thread_it->second;
 
@@ -1067,7 +1153,7 @@ static void LuaInfoCommand(const std::optional<std::string>& script = std::nullo
 	{
 		WriteChatStatus("|  PID  |         NAME         |    START    |     END     |   STATUS   |");
 
-		for (const auto& [pid, info] : s_infoMap)
+		for (const auto& [pid, info] : s_globalState->infoMap)
 		{
 			fmt::memory_buffer line;
 			fmt::format_to(fmt::appender(line), "|{:^7}|{:^22}|{:^13}|{:^13}|{:^12}|",
@@ -1447,7 +1533,7 @@ public:
 	{
 		LuaScriptPtr entry = LuaThread::Create(&s_environment);
 		entry->SetTurbo(s_turboNum);
-		s_pending.push_back(entry);
+		s_globalState->pendingScripts.push_back(entry);
 
 		return entry;
 	}
@@ -1455,7 +1541,7 @@ public:
 	void DestroyLuaScript(const LuaScriptPtr& thread) override
 	{
 		thread->Exit();
-		s_infoMap.erase(thread->GetPID());
+		s_globalState->infoMap.erase(thread->GetPID());
 	}
 
 	void ExecuteFile(const LuaScriptPtr& thread, std::string_view filename, const std::vector<std::string>& arguments) override
@@ -1464,7 +1550,7 @@ public:
 		if (result)
 		{
 			result->status = LuaThreadStatus::Running;
-			s_infoMap.emplace(result->pid, *result);
+			s_globalState->infoMap.emplace(result->pid, *result);
 		}
 
 		// TODO: Return value?
@@ -1476,7 +1562,7 @@ public:
 		if (result)
 		{
 			result->status = LuaThreadStatus::Running;
-			s_infoMap.emplace(result->pid, *result);
+			s_globalState->infoMap.emplace(result->pid, *result);
 		}
 
 		// TODO: Return value?
@@ -1814,6 +1900,8 @@ PLUGIN_API void InitializePlugin()
 	using namespace mq::lua;
 	DebugSpewAlways("Lua Initializing version %f", MQ2Version);
 
+	s_globalState = new GlobalScriptState;
+
 	ReadSettings();
 
 	AddCommand("/lua", LuaCommand);
@@ -1856,31 +1944,72 @@ PLUGIN_API void ShutdownPlugin()
 
 	delete s_pluginInterface;
 	s_pluginInterface = nullptr;
+
+	delete s_globalState;
+	s_globalState = nullptr;
 }
 
 PLUGIN_API void OnPulse()
 {
 	using namespace mq::lua;
 
-	if (!s_pending.empty())
+	if (!s_globalState->pendingScripts.empty())
 	{
-		std::move(s_pending.begin(), s_pending.end(), std::back_inserter(s_running));
-		s_pending.clear();
+		for (std::shared_ptr<LuaThread>& pending : s_globalState->pendingScripts)
+		{
+			RunningScript& script = s_globalState->runningScripts.emplace_back();
+			script.pid = pending->GetPID();
+			script.name = pending->GetName();
+			script.dead = false;
+			script.mainThread = std::move(pending);
+		}
+
+		s_globalState->pendingScripts.clear();
 	}
 
-	s_running.erase(std::remove_if(s_running.begin(), s_running.end(),
-		[](const std::shared_ptr<LuaThread>& thread) -> bool
+	bool hasDeadScripts = false;
+	for (RunningScript& script : s_globalState->runningScripts)
+	{
+		if (script.dead || script.mainThread == nullptr)
 		{
-			LuaThread::RunResult result = thread->Run();
+			hasDeadScripts = true;
+			continue;
+		}
 
-			if (result.first != sol::thread_status::yielded)
+		const std::shared_ptr<LuaThread>& thread = script.mainThread;
+		LuaThread::RunResult result = thread->Run();
+
+		if (result.first != sol::thread_status::yielded)
+		{
+			EndScript(thread, result, true);
+
+			hasDeadScripts = true;
+			script.dead = true;
+		}
+	}
+
+	if (hasDeadScripts)
+	{
+		std::vector<RunningScript> runningScripts;
+		runningScripts.reserve(s_globalState->runningScripts.size());
+
+		// Transfer scripts that are still alive to new vector, then swap that vector into the running scripts
+		// list. This will keep all of our current scripts and free the dead ones all at once.
+		for (RunningScript& script : s_globalState->runningScripts)
+		{
+			if (!script.dead)
 			{
-				EndScript(thread, result, true);
-				return true;
-			}
+				runningScripts.push_back(std::move(script));
 
-			return false;
-		}), s_running.end());
+				script.dead = true;
+				script.pid = -1;
+			}
+		}
+
+		std::swap(runningScripts, s_globalState->runningScripts);
+
+		// The dead stuff is freed when we leave this scope.
+	}
 
 	// Process messages after any threads have ended or started (the order likely won't matter since cleanup is checked)
 	LuaActors::Process();
@@ -1894,11 +2023,11 @@ PLUGIN_API void OnPulse()
 		{
 			// this doesn't need to be super tight, no one should be depending on this clearing objects at exactly the GC
 			// interval, so just clear out anything that existed last time we checked.
-			for (auto it = s_infoMap.begin(); it != s_infoMap.end();)
+			for (auto it = s_globalState->infoMap.begin(); it != s_globalState->infoMap.end();)
 			{
 				if (it->second.endTime != std::chrono::system_clock::time_point{}
 					&& it->second.endTime <= last_check_time)
-					it = s_infoMap.erase(it);
+					it = s_globalState->infoMap.erase(it);
 				else
 					++it;
 			}
@@ -1911,41 +2040,73 @@ PLUGIN_API void OnPulse()
 PLUGIN_API void OnAddSpawn(PlayerClient* spawn)
 {
 	using namespace mq::lua;
-	for (const auto& thread : s_running)
-		thread->AddSpawn(spawn);
 
-	for (const auto& thread : s_pending)
+	for (RunningScript& script : s_globalState->runningScripts)
+	{
+		if (script.dead)
+			continue;
+
+		script.mainThread->AddSpawn(spawn);
+	}
+
+	for (const auto& thread : s_globalState->pendingScripts)
+	{
 		thread->AddSpawn(spawn);
+	}
 }
 
 PLUGIN_API void OnRemoveSpawn(PlayerClient* spawn)
 {
 	using namespace mq::lua;
-	for (const auto& thread : s_running)
-		thread->RemoveSpawn(spawn);
 
-	for (const auto& thread : s_pending)
+	for (RunningScript& script : s_globalState->runningScripts)
+	{
+		if (script.dead)
+			continue;
+
+		script.mainThread->RemoveSpawn(spawn);
+	}
+
+	for (const auto& thread : s_globalState->pendingScripts)
+	{
 		thread->RemoveSpawn(spawn);
+	}
 }
 
 PLUGIN_API void OnAddGroundItem(EQGroundItem* item)
 {
 	using namespace mq::lua;
-	for (const auto& thread : s_running)
-		thread->AddGroundItem(item);
 
-	for (const auto& thread : s_pending)
+	for (RunningScript& script : s_globalState->runningScripts)
+	{
+		if (script.dead)
+			continue;
+
+		script.mainThread->AddGroundItem(item);
+	}
+
+	for (const auto& thread : s_globalState->pendingScripts)
+	{
 		thread->AddGroundItem(item);
+	}
 }
 
 PLUGIN_API void OnRemoveGroundItem(EQGroundItem* item)
 {
 	using namespace mq::lua;
-	for (const auto& thread : s_running)
-		thread->RemoveGroundItem(item);
 
-	for (const auto& thread : s_pending)
+	for (RunningScript& script : s_globalState->runningScripts)
+	{
+		if (script.dead)
+			continue;
+
+		script.mainThread->RemoveGroundItem(item);
+	}
+
+	for (const auto& thread : s_globalState->pendingScripts)
+	{
 		thread->RemoveGroundItem(item);
+	}
 }
 
 PLUGIN_API void OnUpdateImGui()
@@ -1953,9 +2114,12 @@ PLUGIN_API void OnUpdateImGui()
 	using namespace mq::lua;
 
 	// update any script-defined windows first
-	for (const std::shared_ptr<LuaThread>& thread : s_running)
+	for (RunningScript& script : s_globalState->runningScripts)
 	{
-		if (LuaImGuiProcessor* imgui = thread->GetImGuiProcessor())
+		if (script.dead)
+			continue;
+
+		if (LuaImGuiProcessor* imgui = script.mainThread->GetImGuiProcessor())
 			imgui->Pulse();
 	}
 
@@ -1990,7 +2154,7 @@ PLUGIN_API void OnUpdateImGui()
 			auto doSection = [&](const char* text, auto&& condition, bool& show)
 			{
 				int count = 0;
-				for (const auto& [_, info] : s_infoMap)
+				for (const auto& [_, info] : s_globalState->infoMap)
 				{
 					if (condition(info))
 						++count;
@@ -2001,7 +2165,7 @@ PLUGIN_API void OnUpdateImGui()
 					show = true;
 					ImGui::Unindent(ImGui::GetTreeNodeToLabelSpacing());
 
-					for (const auto& [_, info] : s_infoMap)
+					for (const auto& [_, info] : s_globalState->infoMap)
 					{
 						if (condition(info))
 						{
@@ -2038,8 +2202,8 @@ PLUGIN_API void OnUpdateImGui()
 
 		ImGui::BeginGroup();
 
-		auto infoIter = s_infoMap.find(selected_pid);
-		if (infoIter != s_infoMap.end() && should_show(infoIter->second))
+		auto infoIter = s_globalState->infoMap.find(selected_pid);
+		if (infoIter != s_globalState->infoMap.end() && should_show(infoIter->second))
 		{
 			LuaThreadInfo& info = infoIter->second;
 
@@ -2235,11 +2399,18 @@ PLUGIN_API void OnUpdateImGui()
 
 PLUGIN_API void OnWriteChatColor(const char* Line, int Color, int Filter)
 {
-	for (const std::shared_ptr<mq::lua::LuaThread>& thread : mq::lua::s_running)
+	using namespace mq::lua;
+
+	for (RunningScript& script : s_globalState->runningScripts)
 	{
-		if (thread && !thread->IsPaused())
+		if (script.dead)
+			continue;
+
+		const std::shared_ptr<LuaThread>& thread = script.mainThread;
+
+		if (!thread->IsPaused())
 		{
-			if (lua::LuaEventProcessor* events = thread->GetEventProcessor())
+			if (LuaEventProcessor* events = thread->GetEventProcessor())
 				events->Process(Line);
 		}
 	}
@@ -2247,11 +2418,18 @@ PLUGIN_API void OnWriteChatColor(const char* Line, int Color, int Filter)
 
 PLUGIN_API bool OnIncomingChat(const char* Line, DWORD Color)
 {
-	for (const std::shared_ptr<mq::lua::LuaThread>& thread : mq::lua::s_running)
+	using namespace mq::lua;
+
+	for (RunningScript& script : s_globalState->runningScripts)
 	{
-		if (thread && !thread->IsPaused())
+		if (script.dead)
+			continue;
+
+		const std::shared_ptr<LuaThread>& thread = script.mainThread;
+
+		if (!thread->IsPaused())
 		{
-			if (lua::LuaEventProcessor* events = thread->GetEventProcessor())
+			if (LuaEventProcessor* events = thread->GetEventProcessor())
 				events->Process(Line);
 		}
 	}
@@ -2270,26 +2448,24 @@ PLUGIN_API void OnUnloadPlugin(const char* pluginName)
 
 	// Visit all of our currently running scripts and terminate any that might be utilizing this plugin as a dependency.
 	MQPlugin* plugin = GetPlugin(pluginName);
-	if (plugin)
+
+	for (RunningScript& script : s_globalState->runningScripts)
 	{
-		// Best-effort cleanup in case a plugin forgets to unregister its module.
-	}
+		if (script.dead)
+			continue;
 
-	s_running.erase(std::remove_if(s_running.begin(), s_running.end(),
-		[&](const std::shared_ptr<LuaThread>& thread) -> bool
+		if (script.mainThread->IsDependency(plugin))
 		{
-			if (thread && thread->IsDependency(plugin))
-			{
-				// Exit the thread immediately
-				thread->Exit(lua::LuaThreadExitReason::DependencyRemoved);
+			// Exit the thread immediately
+			script.mainThread->Exit(lua::LuaThreadExitReason::DependencyRemoved);
 
-				EndScript(thread, { sol::thread_status::dead, std::nullopt }, false);
+			EndScript(script.mainThread, { sol::thread_status::dead, std::nullopt }, false);
 
-				WriteChatStatus("Running lua script '%s' with PID %d terminated due to unloading of %s",
-					thread->GetName().c_str(), thread->GetPID(), pluginName);
-				return true;
-			}
+			WriteChatStatus("Running lua script '%s' with PID %d terminated due to unloading of %s",
+				script.name.c_str(), script.pid, pluginName);
 
-			return false;
-		}), end(s_running));
+			script.dead = true;
+			script.mainThread.reset();
+		}
+	}
 }

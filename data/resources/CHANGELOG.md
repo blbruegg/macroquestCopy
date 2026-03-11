@@ -1,3 +1,43 @@
+## 3/5/2026
+
+Add support for teek and tormax
+
+
+## 3/1/2026
+
+Updated to crashpad from the crashpad-backtrace fork we were previously using.
+- For local builders you should remove crashpad-backtrace to prevent conflicts
+- `vcpkg remove crashpad-backtrace:x64-windows-static` and/or `vcpkg remove crashpad-backtrace:x86-windows-static`
+
+### Bug fixes
+
+- live/test: Fix /removeaug (#974)
+- emu: Fix CTargetWnd buff accessor (#975)
+
+
+## 2/22/2026
+
+### ImAnim Integration
+
+ImAnim is now available to lua and plugins! [See PR For more info](https://github.com/macroquest/macroquest/pull/968).
+
+- See the lua demo for examples of how to do things with ImAnim in lua: `/lua run examples/imanim_demo`
+- Lua definitions have been updated with ImAnim support.
+- Console menus have been re-arranged a little bit.
+
+
+## 2/18/2026
+
+Added network discovery for actors on the local network. In general, no configuration is
+required, but the following config changes were added/moved:
+- Moved the `NetworkPeerPort` main ini option into `[Network]` as `PeerPort` (with fallback)
+- Added the following options in the `[Network]` section in the main ini:
+  - `PeerPort` (default 7781): the port to start the actor peer on
+  - `MulticastPeriod` (default 1000): milliseconds between multicast announces
+  - `MulticastPort` (default 37781): port the udp multicast sender sends to
+  - `MulticastAddress` (default 239.255.77.81): multicast address to use (http://en.wikipedia.org/wiki/Multicast_address)
+  - `MulticastListenAddress` (default 0.0.0.0): multicast address to listen on
+
 ## 2/11/2026 (live)
 
 Update for live patch
