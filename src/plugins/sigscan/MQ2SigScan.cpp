@@ -271,7 +271,7 @@ void CommandScan(PlayerClient* pChar, const char* szLine)
 		scanner.SetTextSection(textBase, textSize);
 		scanner.SetBaseAddresses(GetPreferredBase(config.mod), GetActualBase(config.mod));
 
-		auto results = scanner.ScanAll(entries);
+		auto results = scanner.ScanAllWithFallback(entries);
 		allResults.insert(allResults.end(), results.begin(), results.end());
 
 		WriteChatf("\ag[SigScan]\ax Scanned %s: %d entries", config.filename, static_cast<int>(results.size()));

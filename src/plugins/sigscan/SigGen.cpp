@@ -113,8 +113,8 @@ PatternData SigGenerator::BuildFunctionSignature(const uint8_t* data, size_t max
 				return result;
 		}
 
-		// Cap at 128 bytes
-		if (result.bytes.size() >= 128)
+		// Cap at maxLen bytes
+		if (result.bytes.size() >= maxLen)
 			break;
 	}
 
@@ -292,19 +292,31 @@ SigGenResult SigGenerator::GenerateForFunction(const std::string& name, uintptr_
 		return result;
 	}
 
-	size_t maxLen = std::min<size_t>(128, m_textBase + m_textSize - address);
-	const uint8_t* data = reinterpret_cast<const uint8_t*>(address);
+	// Try progressively longer signatures: 128 bytes first, then 256 if not unique.
+	static const size_t kMaxLengths[] = { 128, 256 };
+	PatternData pattern;
+	int matches = 0;
 
-	PatternData pattern = BuildFunctionSignature(data, maxLen);
-
-	if (pattern.bytes.empty())
+	for (size_t maxCap : kMaxLengths)
 	{
-		result.success = false;
-		result.errorMessage = "Failed to decode instructions at address";
-		return result;
+		size_t maxLen = std::min<size_t>(maxCap, m_textBase + m_textSize - address);
+		const uint8_t* data = reinterpret_cast<const uint8_t*>(address);
+
+		pattern = BuildFunctionSignature(data, maxLen);
+
+		if (pattern.bytes.empty())
+		{
+			result.success = false;
+			result.errorMessage = "Failed to decode instructions at address";
+			return result;
+		}
+
+		matches = CountMatches(pattern);
+
+		if (matches == 1)
+			break; // unique, no need to try longer
 	}
 
-	int matches = CountMatches(pattern);
 	if (matches == 0)
 	{
 		result.success = false;
@@ -452,6 +464,13 @@ SigGenResult SigGenerator::Generate(const std::string& name, uintptr_t address)
 	}
 	else if (name.find("_Table") != std::string::npos)
 	{
+		looksLikeGlobal = true;
+	}
+	else if (name.find("__Instance") != std::string::npos)
+	{
+		// Singleton Instance() methods have identical boilerplate code.
+		// Treating them as globals produces more unique signatures by
+		// capturing the caller context around the RIP-relative reference.
 		looksLikeGlobal = true;
 	}
 	else if (!inText)
