@@ -5,41 +5,48 @@ require 'ImGui'
 
 ImguiHelper.Popup = {
     Modal = function(title, text, buttons)
+            if not buttons or #buttons == 0 then
+                return 0
+            end
+            if not mq.canDelay() then
+                print("ImguiHelper.Popup.Modal cannot block in the current context (yielding is disabled, typically during require). Ensure the caller is not loading as a module.", 2)
+                mq.exit()
+            end
             local last_return = 0
             local openGUI = true
-            local shouldDrawGUI = true
 
-            function DisplayModalGUI()
+            local function DisplayModalGUI()
                 if not openGUI then return end
-                local flags = bit32.bor(ImGuiWindowFlags.NoDecoration, ImGuiWindowFlags.NoInputs, ImGuiWindowFlags.NoNav, ImGuiWindowFlags.NoDocking)
-                ImGui.SetNextWindowBgAlpha(0)
-                ImGui.SetNextWindowSize(0, 0)
-                openGUI, shouldDrawGUI = ImGui.Begin('Modal Demo', openGUI, flags)
-                if shouldDrawGUI then
-                    ImGui.OpenPopup(title)
-                    if ImGui.BeginPopupModal(title) then
-                        ImGui.Text(text)
-                        ImGui.Separator()
-                        for order, button in ipairs(buttons) do
-                            if ImGui.Button(button) then
-                                openGUI = false
-                                last_return = order
-                                ImGui.CloseCurrentPopup()
-                            end
-                            ImGui.SameLine()
+                ImGui.OpenPopup(title)
+                local vp = ImGui.GetMainViewport()
+                ImGui.SetNextWindowPos(vp:GetCenter(), ImGuiCond.Appearing, ImVec2(0.5, 0.5))
+                local wrapW = math.min(ImGui.GetFontSize() * 40, vp.WorkSize.x * 0.6)
+                local popupFlags = bit32.bor(ImGuiWindowFlags.AlwaysAutoResize, ImGuiWindowFlags.NoResize, ImGuiWindowFlags.NoSavedSettings)
+                if ImGui.BeginPopupModal(title, nil, popupFlags) then
+                    ImGui.PushTextWrapPos(ImGui.GetCursorPosX() + wrapW)
+                    ImGui.TextWrapped(text)
+                    ImGui.PopTextWrapPos()
+                    ImGui.Separator()
+                    for order, button in ipairs(buttons) do
+                        if ImGui.Button(button) then
+                            openGUI = false
+                            last_return = order
+                            ImGui.CloseCurrentPopup()
                         end
+                        ImGui.SameLine()
                     end
                     ImGui.EndPopup()
                 end
-                ImGui.End()
             end
 
-            ImGui.Register('DisplayModalGUI'..title, DisplayModalGUI)
+            ImGui.Register(title, DisplayModalGUI)
 
             local startModal = os.time()
             while openGUI and os.difftime(os.time(), startModal) < 30 do
                 mq.delay(10)
             end
+
+            ImGui.Unregister(title)
 
             return last_return
         end,

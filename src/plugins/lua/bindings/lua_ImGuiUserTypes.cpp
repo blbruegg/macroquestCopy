@@ -15,6 +15,8 @@
 #include "pch.h"
 
 #include "eqlib/game/UITextures.h"
+#include "mq/imgui/AlphaMask.h"
+#include "mq/imgui/ImGuiUtils.h"
 #include "mq/imgui/Widgets.h"
 
 #include "imgui/imgui.h"
@@ -450,11 +452,6 @@ void RegisterBindings_ImGuiUserTypes(sol::state_view lua)
 		[](ImDrawList& mThis, const ImTextureRef& tex_ref, const ImVec2& p_min, const ImVec2& p_max, const ImVec2& uv_min, const ImVec2& uv_max, int col, float rounding, int flags) { mThis.AddImageRounded(tex_ref, p_min, p_max, uv_min, uv_max, ImU32(col), rounding, ImDrawFlags(flags)); }
 	));
 
-	imDrawList.set_function("AddTextureAnimation",
-		[](ImDrawList& mThis, const std::unique_ptr<eqlib::CTextureAnimation>& anim, const ImVec2& pos, std::optional<ImVec2> size) {
-			return imgui::DrawTextureAnimation(&mThis, anim.get(), pos, size.has_value() ? eqlib::CXSize(*size) : eqlib::CXSize());
-		});
-
 	// Stateful Path API
 	imDrawList.set_function("PathClear", &ImDrawList::PathClear);
 	imDrawList.set_function("PathLineTo", &ImDrawList::PathLineTo);
@@ -497,6 +494,30 @@ void RegisterBindings_ImGuiUserTypes(sol::state_view lua)
 	// PrimWriteVtx
 	// PrimWriteIdx
 	// PrimVtx
+
+	// Custom additions to ImDrawList
+
+	imDrawList.set_function("AddTextureAnimation",
+		[](ImDrawList& mThis, const std::unique_ptr<eqlib::CTextureAnimation>& anim, const ImVec2& pos, std::optional<ImVec2> size) {
+			return imgui::DrawTextureAnimation(&mThis, anim.get(), pos, size.has_value() ? eqlib::CXSize(*size) : eqlib::CXSize());
+		});
+	imDrawList.set_function("AddImageNineSlice",
+		[](ImDrawList& mThis, const ImTextureRef& tex_ref, const mq::imgui::NineSliceImageParams& image_params, const ImVec2& p_min, const ImVec2& p_max, std::optional<ImU32> tint_col)
+		{
+			mq::imgui::AddImageNineSlice(&mThis, tex_ref, image_params, p_min, p_max, tint_col.value_or(IM_COL32_WHITE));
+		});
+
+	imDrawList.set_function("CreateMaskLayer", &mq::imgui::CreateMaskLayer);
+	imDrawList.set_function("BeginMaskedDraw", [](ImDrawList* draw_list, int op)
+		{
+			mq::imgui::BeginMaskedDraw(draw_list, static_cast<mq::imgui::AlphaMaskOp>(op));
+		});
+	imDrawList.set_function("EndMaskedDraw", &mq::imgui::EndMaskedDraw);
+
+	imDrawList.set_function("CreateCoverageMaskLayer", &mq::imgui::CreateCoverageMaskLayer);
+	imDrawList.set_function("BeginCoverageMaskedDraw", &mq::imgui::BeginCoverageMaskedDraw);
+	imDrawList.set_function("EndCoverageMaskedDraw", &mq::imgui::EndCoverageMaskedDraw);
+
 
 	lua.new_usertype<ImGuiTableColumnSortSpecs>(
 		"ImGuiTableSortSpecsColumn"    , sol::no_constructor,

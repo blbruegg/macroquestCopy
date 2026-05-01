@@ -80,10 +80,20 @@
 
 #elif IS_EMU_CLIENT
 
+#if MQ_EXPANSION_LEVEL >= EXPANSION_LEVEL_LS
+#if defined(_M_AMD64)
+#pragma message("Building MacroQuest for EMULATOR (x64)")
+#else
+#error Emulator Build is only for x64
+#endif // defined(_M_AMD64)
+#else 
 #if defined(_M_AMD64)
 #error Emulator Build is only for x86
-#endif
+#else
 #pragma message("Building MacroQuest for EMULATOR (x86)")
+#endif // defined(_M_AMD64)
+#endif // MQ_EXPANSION_LEVEL >= EXPANSION_LEVEL_LS
+
 #define MacroQuestWinClassName "__MacroQuestTray(EQEmu)"
 #define MacroQuestWinName "MacroQuest(EQEmu)"
 
@@ -902,6 +912,8 @@ void MacroQuest::Shutdown()
 bool MacroQuest::InitializeEQLib()
 {
 	eqlib::LibraryConfig config;
+	// Some eqlib main hooks are duplicated in MQ2LoginFrontend.cpp, so before this is modified be sure to
+	// remove or guard the duplication so we do not get double fires.
 	config.flags = eqlib::ConfigFlags::NoMainHooks;
 	config.eventReceiver = this;
 	config.logger = m_eqlibLogger;
@@ -982,6 +994,16 @@ void MacroQuest::OnEQMainDllLoadedStateChanged(bool loaded)
 
 		ShutdownLoginFrontend();
 	}
+}
+
+void MacroQuest::OnLoginFrontendEntered()
+{
+	PluginsLoginFrontendEntered();
+}
+
+void MacroQuest::OnLoginFrontendExited()
+{
+	PluginsLoginFrontendExited();
 }
 
 //============================================================================

@@ -14,6 +14,7 @@
 
 #include "pch.h"
 
+#include "mq/imgui/AlphaMask.h"
 #include "mq/imgui/ConsoleWidget.h"
 #include "mq/imgui/ImGuiUtils.h"
 #include "mq/imgui/Widgets.h"
@@ -33,7 +34,7 @@ namespace mq::lua::bindings {
 void lua_addimgui(std::string_view name, sol::function function, sol::this_state s);
 void lua_removeimgui(std::string_view name, sol::this_state s);
 
-void RegisterBindings_ImGuiCustom(sol::table& ImGui)
+void RegisterBindings_ImGuiCustom(sol::state_view lua, sol::table& ImGui)
 {
 	// Variables
 	ImGui.set("ConsoleFont", mq::imgui::ConsoleFont);
@@ -53,6 +54,41 @@ void RegisterBindings_ImGuiCustom(sol::table& ImGui)
 		[](CTextureAnimation* anim) { return mq::imgui::DrawTextureAnimation(anim); }
 	));
 	ImGui.set_function("GetEQImFont", &mq::imgui::GetEQImFont);
+
+	// NineSlice image drawing
+	ImGui.new_usertype<mq::imgui::NineSliceImageParams>(
+		"NineSliceImageParams",
+		"WithTextureCoords", [](const ImVec2& texture_size, const ImVec4& p_margins, std::optional<ImVec2> uv_min, std::optional<ImVec2> uv_max)
+		{
+			return mq::imgui::NineSliceImageParams::WithTextureCoords(texture_size, p_margins, uv_min.value_or(ImVec2(0.0f, 0.0f)), uv_max.value_or(ImVec2(1.0f, 1.0f)));
+		},
+		"WithPixelCoords", [](const ImVec2& texture_size, const ImVec4& p_margins, std::optional<ImVec2> p_min, std::optional<ImVec2> p_max)
+		{
+			return mq::imgui::NineSliceImageParams::WithPixelCoords(texture_size, p_margins, p_min.value_or(ImVec2(0.0f, 0.0f)), p_max.value_or(ImVec2(-1.0f, -1.0f)));
+		},
+		"p_min", &mq::imgui::NineSliceImageParams::p_min,
+		"p_max", &mq::imgui::NineSliceImageParams::p_max,
+		"uv_min", &mq::imgui::NineSliceImageParams::uv_min,
+		"uv_max", &mq::imgui::NineSliceImageParams::uv_max,
+		"p_margins", &mq::imgui::NineSliceImageParams::p_margins,
+		"uv_margins", &mq::imgui::NineSliceImageParams::uv_margins,
+		"texture_size", &mq::imgui::NineSliceImageParams::texture_size
+	);
+	ImGui.set_function("ImageNineSlice",
+		[](const ImTextureRef& tex_ref, const mq::imgui::NineSliceImageParams& image_params, const ImVec2& size, std::optional<ImU32> tint_col)
+		{
+			mq::imgui::ImageNineSlice(tex_ref, image_params, size, tint_col.value_or(IM_COL32_WHITE));
+		});
+	// AddImageNineSlice -> found on ImDrawList bindings
+
+	// Masking -> found on ImDrawList bindings
+
+	lua.new_enum("AlphaMaskOp", std::initializer_list<std::pair<std::string_view, int>>{
+		{ "Intersect"                    , static_cast<int>(mq::imgui::AlphaMaskOp::Intersect) },
+		{ "Union"                        , static_cast<int>(mq::imgui::AlphaMaskOp::Union) },
+		{ "Subtract"                     , static_cast<int>(mq::imgui::AlphaMaskOp::Subtract) },
+		{ "Complement"                   , static_cast<int>(mq::imgui::AlphaMaskOp::Complement) },
+	});
 
 	// Widgets: Utility
 	ImGui.set_function("HelpMarker", [](const char* text, std::optional<float> width, std::optional<ImFont*> font) { mq::imgui::HelpMarker(text, width.value_or(450), font.value_or(nullptr)); });
