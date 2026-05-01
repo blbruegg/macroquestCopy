@@ -46,11 +46,43 @@ Prints the last scan report to the MacroQuest chat window.
 /sigscan report
 ```
 
-Review `scan_results.json` and `scan_report.txt` in the `signatures/` directory to update offset headers.
+## Updating Offsets After a Scan
+
+After scanning a new EQ build, use the Python tools in `tools/offsetfinder/` to apply the results. See `tools/offsetfinder/README.md` for the full workflow, including resolving offsets that the initial scan missed.
 
 ## Standalone CLI
 
-The `cli/` subdirectory contains a standalone command-line tool that can scan PE executables on disk without injecting into a running process. Useful for offline/automated processing.
+The `cli/` subdirectory contains a standalone command-line tool (`SigScanCLI.exe`) that can scan PE executables on disk without injecting into a running process. Useful for offline/automated processing.
+
+### Generate Signatures
+
+Before EQ patches, generate signatures from a known-good binary and its offset header:
+
+```
+SigScanCLI.exe generate eqgame.exe eqgame.h --output signatures_eqgame.json
+```
+
+The header must define offsets in `#define SomeName_x 0xADDRESS` format. The tool also reads `__ClientDate` from the header to tag the signature set.
+
+### Scan a Patched Binary
+
+After EQ patches, scan the new executable using the previously generated signatures:
+
+```
+SigScanCLI.exe scan signatures_eqgame.json eqgame_new.exe --output results.json
+```
+
+If the initial scan misses some offsets but finds enough others, a delta-guided fallback pass uses the median address shift to locate the remaining ones.
+
+### View Report
+
+```
+SigScanCLI.exe report results.json
+```
+
+### Update Offset Headers
+
+Use the Python tools in `tools/offsetfinder/` to apply scan results. See `tools/offsetfinder/README.md` for the full workflow including resolving missing offsets.
 
 ## Files
 

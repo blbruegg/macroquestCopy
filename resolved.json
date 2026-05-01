@@ -1,0 +1,605 @@
+{
+  "deltas": {
+    "code": 8256,
+    "data": 113456,
+    "overall": 8336
+  },
+  "resolved": [
+    {
+      "name": "__ActualVersionTime",
+      "confidence": "high",
+      "new_address": "0x1409A4C71",
+      "old_address": "0x140989138",
+      "delta": 113465,
+      "ref_count": 4,
+      "total_refs": 204,
+      "method": "rip_xref",
+      "predicted": "0x1409A4C68",
+      "referencing_code": [
+        "0x1406A2826",
+        "0x1406A2827",
+        "0x1406A2828",
+        "0x1406A2825"
+      ]
+    },
+    {
+      "name": "__EncryptPad0",
+      "confidence": "high",
+      "new_address": "0x140D78B0A",
+      "old_address": "0x140D5CFC0",
+      "delta": 113482,
+      "ref_count": 4,
+      "total_refs": 36,
+      "method": "rip_xref",
+      "predicted": "0x140D78AF0",
+      "referencing_code": [
+        "0x14007453D",
+        "0x14007453E",
+        "0x14007453F",
+        "0x14007453C"
+      ]
+    },
+    {
+      "name": "instEQZoneInfo",
+      "confidence": "high",
+      "new_address": "0x140EB1833",
+      "old_address": "0x140E95CD4",
+      "delta": 113503,
+      "ref_count": 4,
+      "total_refs": 3364,
+      "method": "rip_xref",
+      "predicted": "0x140EB1804",
+      "referencing_code": [
+        "0x14026D8E1",
+        "0x14026D8E2",
+        "0x14026D8E3",
+        "0x14026D8E0"
+      ]
+    },
+    {
+      "name": "__gWorld",
+      "confidence": "high",
+      "new_address": "0x140EAC4A7",
+      "old_address": "0x140E90998",
+      "delta": 113423,
+      "ref_count": 4,
+      "total_refs": 784,
+      "method": "rip_xref",
+      "predicted": "0x140EAC4C8",
+      "referencing_code": [
+        "0x14077C3B8",
+        "0x14077C3B9",
+        "0x14077C3BA",
+        "0x14077C3B7"
+      ]
+    },
+    {
+      "name": "__MemCheckActive",
+      "confidence": "high",
+      "new_address": "0x140EB327A",
+      "old_address": "0x140E9773D",
+      "delta": 113469,
+      "ref_count": 4,
+      "total_refs": 748,
+      "method": "rip_xref",
+      "predicted": "0x140EB326D",
+      "referencing_code": [
+        "0x14077A48B",
+        "0x14077A48C",
+        "0x14077A48D",
+        "0x14077A48A"
+      ]
+    },
+    {
+      "name": "__heqmain",
+      "confidence": "high",
+      "new_address": "0x140F2D228",
+      "old_address": "0x140F116F8",
+      "delta": 113456,
+      "ref_count": 80,
+      "total_refs": 6068,
+      "method": "rip_xref",
+      "predicted": "0x140F2D228",
+      "referencing_code": [
+        "0x14019F86D",
+        "0x140238251",
+        "0x140288376",
+        "0x14033A460",
+        "0x14035033A"
+      ]
+    },
+    {
+      "name": "__HWnd",
+      "confidence": "high",
+      "new_address": "0x140F2D248",
+      "old_address": "0x140F11718",
+      "delta": 113456,
+      "ref_count": 20,
+      "total_refs": 6064,
+      "method": "rip_xref",
+      "predicted": "0x140F2D248",
+      "referencing_code": [
+        "0x140350CF6",
+        "0x140350D41",
+        "0x1403516D9",
+        "0x1403516EB",
+        "0x140352EB4"
+      ]
+    },
+    {
+      "name": "pinstActiveGMaster",
+      "confidence": "high",
+      "new_address": "0x140EA9EFC",
+      "old_address": "0x140E8E398",
+      "delta": 113508,
+      "ref_count": 4,
+      "total_refs": 41696,
+      "method": "rip_xref",
+      "predicted": "0x140EA9EC8",
+      "referencing_code": [
+        "0x1404F4F3C",
+        "0x1404F4F3D",
+        "0x1404F4F3E",
+        "0x1404F4F3B"
+      ]
+    },
+    {
+      "name": "pinstControlledPlayer",
+      "confidence": "high",
+      "new_address": "0x140EA9F60",
+      "old_address": "0x140E8E430",
+      "delta": 113456,
+      "ref_count": 4,
+      "total_refs": 9384,
+      "method": "rip_xref",
+      "predicted": "0x140EA9F60",
+      "referencing_code": [
+        "0x14026DA07",
+        "0x14026DA08",
+        "0x14026DA09",
+        "0x14026DA06"
+      ]
+    },
+    {
+      "name": "pinstCXWndManager",
+      "confidence": "high",
+      "new_address": "0x140F53658",
+      "old_address": "0x140F37B28",
+      "delta": 113456,
+      "ref_count": 1452,
+      "total_refs": 4468,
+      "method": "rip_xref",
+      "predicted": "0x140F53658",
+      "referencing_code": [
+        "0x1400AC989",
+        "0x1400B1C0D",
+        "0x1400B1CC8",
+        "0x1400B1D16",
+        "0x1400B1D3F"
+      ]
+    },
+    {
+      "name": "pinstDeviceInputProxy",
+      "confidence": "high",
+      "new_address": "0x140EB1666",
+      "old_address": "0x140E95B3C",
+      "delta": 113450,
+      "ref_count": 4,
+      "total_refs": 8664,
+      "method": "rip_xref",
+      "predicted": "0x140EB166C",
+      "referencing_code": [
+        "0x14032F1A3",
+        "0x14032F1A4",
+        "0x14032F1A5",
+        "0x14032F1A2"
+      ]
+    },
+    {
+      "name": "pinstLocalPC",
+      "confidence": "high",
+      "new_address": "0x140EAC500",
+      "old_address": "0x140E909A8",
+      "delta": 113496,
+      "ref_count": 752,
+      "total_refs": 784,
+      "method": "rip_xref",
+      "predicted": "0x140EAC4D8",
+      "referencing_code": [
+        "0x140049F34",
+        "0x1400A56E8",
+        "0x1400A5AD9",
+        "0x1400A80F5",
+        "0x1400AB1C3"
+      ]
+    },
+    {
+      "name": "pinstCMercenaryClientManager",
+      "confidence": "high",
+      "new_address": "0x140F28508",
+      "old_address": "0x140F0C9D8",
+      "delta": 113456,
+      "ref_count": 16,
+      "total_refs": 1780,
+      "method": "rip_xref",
+      "predicted": "0x140F28508",
+      "referencing_code": [
+        "0x1402D629E",
+        "0x1402D62C7",
+        "0x1402D62DF",
+        "0x140828720",
+        "0x1402D629F"
+      ]
+    },
+    {
+      "name": "pinstModelPlayer",
+      "confidence": "high",
+      "new_address": "0x140EA9EFC",
+      "old_address": "0x140E8E3B0",
+      "delta": 113484,
+      "ref_count": 4,
+      "total_refs": 41740,
+      "method": "rip_xref",
+      "predicted": "0x140EA9EE0",
+      "referencing_code": [
+        "0x1404F4F3C",
+        "0x1404F4F3D",
+        "0x1404F4F3E",
+        "0x1404F4F3B"
+      ]
+    },
+    {
+      "name": "pinstSpawnManager",
+      "confidence": "high",
+      "new_address": "0x140F288C0",
+      "old_address": "0x140F0CD90",
+      "delta": 113456,
+      "ref_count": 4,
+      "total_refs": 2880,
+      "method": "rip_xref",
+      "predicted": "0x140F288C0",
+      "referencing_code": [
+        "0x140829240",
+        "0x140829241",
+        "0x140829242",
+        "0x14082923F"
+      ]
+    },
+    {
+      "name": "pinstSwitchManager",
+      "confidence": "high",
+      "new_address": "0x140EA9A1A",
+      "old_address": "0x140E8DEF0",
+      "delta": 113450,
+      "ref_count": 4,
+      "total_refs": 31920,
+      "method": "rip_xref",
+      "predicted": "0x140EA9A20",
+      "referencing_code": [
+        "0x1406A7567",
+        "0x1406A7568",
+        "0x1406A7569",
+        "0x1406A7566"
+      ]
+    },
+    {
+      "name": "pinstPlayerPath",
+      "confidence": "high",
+      "new_address": "0x140F288D4",
+      "old_address": "0x140F0CDB8",
+      "delta": 113436,
+      "ref_count": 4,
+      "total_refs": 2916,
+      "method": "rip_xref",
+      "predicted": "0x140F288E8",
+      "referencing_code": [
+        "0x14004B07C",
+        "0x14004B07D",
+        "0x14004B07E",
+        "0x14004B07B"
+      ]
+    },
+    {
+      "name": "pinstCTaskManager",
+      "confidence": "high",
+      "new_address": "0x140C34846",
+      "old_address": "0x140C18CF0",
+      "delta": 113494,
+      "ref_count": 4,
+      "total_refs": 36,
+      "method": "rip_xref",
+      "predicted": "0x140C34820",
+      "referencing_code": [
+        "0x140570479",
+        "0x14057047A",
+        "0x14057047B",
+        "0x140570478"
+      ]
+    },
+    {
+      "name": "pinstLootFiltersManager",
+      "confidence": "high",
+      "new_address": "0x140DF8570",
+      "old_address": "0x140DDCA38",
+      "delta": 113464,
+      "ref_count": 24,
+      "total_refs": 680,
+      "method": "rip_xref",
+      "predicted": "0x140DF8568",
+      "referencing_code": [
+        "0x1401643BD",
+        "0x14016447B",
+        "0x140164525",
+        "0x14083FD14",
+        "0x14083FD70"
+      ]
+    },
+    {
+      "name": "__HelpPath",
+      "confidence": "high",
+      "new_address": "0x140F26AB0",
+      "old_address": "0x140F0AF80",
+      "delta": 113456,
+      "ref_count": 4,
+      "total_refs": 648,
+      "method": "rip_xref",
+      "predicted": "0x140F26AB0",
+      "referencing_code": [
+        "0x1401F4625",
+        "0x1401F4626",
+        "0x1401F4627",
+        "0x1401F4624"
+      ]
+    },
+    {
+      "name": "EQ_LoadingS__Array",
+      "confidence": "high",
+      "new_address": "0x140D6DE1C",
+      "old_address": "0x140D522A0",
+      "delta": 113532,
+      "ref_count": 4,
+      "total_refs": 60,
+      "method": "rip_xref",
+      "predicted": "0x140D6DDD0",
+      "referencing_code": [
+        "0x140045ACD",
+        "0x140045ACE",
+        "0x140045ACF",
+        "0x140045ACC"
+      ]
+    },
+    {
+      "name": "__ProcessKeyboardEvents",
+      "confidence": "high",
+      "new_address": "0x140352860",
+      "old_address": "0x140351E10",
+      "delta": 2640,
+      "method": "prologue_at_predicted"
+    },
+    {
+      "name": "__WndProc",
+      "confidence": "high",
+      "new_address": "0x14034F8C0",
+      "old_address": "0x14034EE60",
+      "delta": 2656,
+      "method": "prologue_at_predicted"
+    },
+    {
+      "name": "__ThrottleFrameRate",
+      "confidence": "low",
+      "new_address": "0x14027F5F0",
+      "old_address": "0x14027D221",
+      "delta": 9167,
+      "method": "prologue_at_predicted"
+    },
+    {
+      "name": "CBarterWnd__WndNotification",
+      "confidence": "low",
+      "new_address": "0x14038DD60",
+      "old_address": "0x14038D330",
+      "delta": 2608,
+      "method": "prologue_at_predicted"
+    },
+    {
+      "name": "CDisplay__PreZoneMainUI",
+      "confidence": "low",
+      "new_address": "0x1401A2E3F",
+      "old_address": "0x1401A2C50",
+      "delta": 495,
+      "method": "prologue_at_predicted"
+    },
+    {
+      "name": "CListWnd__SetColors",
+      "confidence": "high",
+      "new_address": "0x1405D6B9F",
+      "old_address": "0x1405D4B50",
+      "delta": 8271,
+      "method": "prologue_at_predicted"
+    },
+    {
+      "name": "CMerchantWnd__PurchasePageHandler__UpdateList",
+      "confidence": "low",
+      "new_address": "0x14049F070",
+      "old_address": "0x14049EE90",
+      "delta": 480,
+      "method": "prologue_at_predicted"
+    },
+    {
+      "name": "CSidlManager__CreateXWnd",
+      "confidence": "low",
+      "new_address": "0x14050A960",
+      "old_address": "0x140508960",
+      "delta": 8192,
+      "method": "prologue_at_predicted"
+    },
+    {
+      "name": "CSidlScreenWnd__Init1",
+      "confidence": "high",
+      "new_address": "0x1405BE36F",
+      "old_address": "0x1405BBF60",
+      "delta": 9231,
+      "method": "prologue_at_predicted"
+    },
+    {
+      "name": "CXMLSOMDocumentBase__XMLRead",
+      "confidence": "high",
+      "new_address": "0x1405B9BE0",
+      "old_address": "0x1405B77E0",
+      "delta": 9216,
+      "method": "prologue_at_predicted"
+    },
+    {
+      "name": "CXWnd__DoAllDrawing",
+      "confidence": "low",
+      "new_address": "0x1405C3600",
+      "old_address": "0x1405C1210",
+      "delta": 9200,
+      "method": "prologue_at_predicted"
+    },
+    {
+      "name": "CXWnd__GetClientRect",
+      "confidence": "high",
+      "new_address": "0x1405C6190",
+      "old_address": "0x1405C3D80",
+      "delta": 9232,
+      "method": "prologue_at_predicted"
+    },
+    {
+      "name": "CXWnd__IsType",
+      "confidence": "high",
+      "new_address": "0x1405C862F",
+      "old_address": "0x1405C61E0",
+      "delta": 9295,
+      "method": "prologue_at_predicted"
+    },
+    {
+      "name": "PcClient__AlertInventoryChanged",
+      "confidence": "high",
+      "new_address": "0x1402E3F4F",
+      "old_address": "0x1402E34F0",
+      "delta": 2655,
+      "method": "prologue_at_predicted"
+    },
+    {
+      "name": "EQGroundItemListManager__Clear",
+      "confidence": "high",
+      "new_address": "0x140228CE0",
+      "old_address": "0x1402282A0",
+      "delta": 2624,
+      "method": "prologue_at_predicted"
+    },
+    {
+      "name": "EQGroundItemListManager__Delete",
+      "confidence": "low",
+      "new_address": "0x14022A7CF",
+      "old_address": "0x140228360",
+      "delta": 9327,
+      "method": "prologue_at_predicted"
+    },
+    {
+      "name": "KeypressHandler__ClearCommandStateArray",
+      "confidence": "low",
+      "new_address": "0x1402C56E0",
+      "old_address": "0x1402C54F0",
+      "delta": 496,
+      "method": "prologue_at_predicted"
+    },
+    {
+      "name": "KeypressHandler__HandleKeyDown",
+      "confidence": "low",
+      "new_address": "0x1402C613F",
+      "old_address": "0x1402C5680",
+      "delta": 2751,
+      "method": "prologue_at_predicted"
+    },
+    {
+      "name": "KeypressHandler__HandleKeyUp",
+      "confidence": "low",
+      "new_address": "0x1402C59CF",
+      "old_address": "0x1402C57A0",
+      "delta": 559,
+      "method": "prologue_at_predicted"
+    },
+    {
+      "name": "CTargetWnd__WndNotification",
+      "confidence": "low",
+      "new_address": "0x14052B740",
+      "old_address": "0x140529730",
+      "delta": 8208,
+      "method": "prologue_at_predicted"
+    },
+    {
+      "name": "Spellmanager__LoadTextSpells",
+      "confidence": "high",
+      "new_address": "0x1403409B0",
+      "old_address": "0x1403407A0",
+      "delta": 528,
+      "method": "prologue_at_predicted"
+    },
+    {
+      "name": "CFindItemWnd__WndNotification",
+      "confidence": "low",
+      "new_address": "0x14015536F",
+      "old_address": "0x140155100",
+      "delta": 623,
+      "method": "prologue_at_predicted"
+    },
+    {
+      "name": "CFindItemWnd__Update",
+      "confidence": "low",
+      "new_address": "0x140157E98",
+      "old_address": "0x140155AC0",
+      "delta": 9176,
+      "method": "prologue_at_predicted"
+    },
+    {
+      "name": "CUnSerializeBuffer__GetString",
+      "confidence": "high",
+      "new_address": "0x140089010",
+      "old_address": "0x140088E00",
+      "delta": 528,
+      "method": "prologue_at_predicted"
+    },
+    {
+      "name": "CBarterSearchWnd__WndNotification",
+      "confidence": "high",
+      "new_address": "0x140389060",
+      "old_address": "0x140388FF0",
+      "delta": 112,
+      "call_xrefs": 3,
+      "method": "call_xref"
+    },
+    {
+      "name": "CDisplay__InitCharSelectUI",
+      "confidence": "low",
+      "new_address": "0x14019A05F",
+      "old_address": "0x140199FF0",
+      "delta": 111,
+      "call_xrefs": 2,
+      "method": "call_xref"
+    },
+    {
+      "name": "CEverQuest__GetClassThreeLetterCode",
+      "confidence": "high",
+      "new_address": "0x140281950",
+      "old_address": "0x1402818F0",
+      "delta": 96,
+      "call_xrefs": 6,
+      "method": "call_xref"
+    },
+    {
+      "name": "CItemDisplayWnd__SetItem",
+      "confidence": "high",
+      "new_address": "0x14044A1C0",
+      "old_address": "0x140447F10",
+      "delta": 8880,
+      "call_xrefs": 3,
+      "method": "call_xref"
+    }
+  ],
+  "summary": {
+    "total_missing": 49,
+    "resolved": 49,
+    "still_missing": 0
+  }
+}

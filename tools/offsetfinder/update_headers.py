@@ -2,11 +2,16 @@
 """
 Update eqlib offset header files from scan results.
 
-Reads scan_results.json produced by the SigScan tool and updates the
+Reads results.json (scan results and/or resolved results) and updates the
 offset #define values in eqgame.h, eqmain.h, and eqgraphics.h.
 
+Only offsets with confidence "confirmed" are applied. After running the scan
+and resolve_missing.py, manually review and change the confidence field to
+"confirmed" for each offset you have verified.
+
 Usage:
-    python update_headers.py <scan_results.json> [--eqlib-path PATH] [--dry-run]
+    python update_headers.py <results.json> [--eqlib-path PATH] [--dry-run]
+                             [--client-date YYYYMMDD]
 """
 
 import json
@@ -22,37 +27,36 @@ EXPECTED_DATE_PATTERN = re.compile(r'(#define\s+__ExpectedVersionDate\s+)"[^"]+"
 EXPECTED_TIME_PATTERN = re.compile(r'(#define\s+__ExpectedVersionTime\s+)"[^"]+"(.*)')
 
 
-def load_scan_results(filepath):
-    """Load scan results JSON and return a dict of name -> new_address."""
+def load_results(filepath):
+    """Load results JSON and return confirmed offsets and stats."""
     with open(filepath, 'r') as f:
         data = json.load(f)
 
-    results = {}
-    stats = {'high': 0, 'low': 0, 'not_found': 0, 'skipped': 0}
+    offsets = {}
+    stats = {'confirmed': 0, 'high': 0, 'low': 0, 'not_found': 0, 'other': 0}
 
-    for entry in data.get('results', []):
+    # Support both scan results format and resolved format
+    entries = data.get('results', []) + data.get('resolved', [])
+
+    for entry in entries:
         name = entry['name']
         confidence = entry.get('confidence', 'not_found')
         new_address = entry.get('new_address', '0x0')
 
-        if confidence == 'not_found':
-            stats['not_found'] += 1
-            continue
-
-        if confidence == 'low':
-            stats['low'] += 1
-            # Still include low-confidence results but warn
-            print(f"  WARNING: Low confidence for {name} "
-                  f"({entry.get('match_count', '?')} matches)")
-
-        if confidence == 'high':
+        if confidence == 'confirmed':
+            stats['confirmed'] += 1
+            define_name = name + '_x'
+            offsets[define_name] = new_address
+        elif confidence == 'high':
             stats['high'] += 1
+        elif confidence == 'low':
+            stats['low'] += 1
+        elif confidence == 'not_found':
+            stats['not_found'] += 1
+        else:
+            stats['other'] += 1
 
-        # Convert name to the _x define format
-        define_name = name + '_x'
-        results[define_name] = new_address
-
-    return results, stats
+    return offsets, stats
 
 
 def update_header(filepath, new_offsets, dry_run=False):
@@ -136,8 +140,9 @@ def update_version_info(filepath, client_date=None, dry_run=False):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Update offset headers from scan results')
-    parser.add_argument('scan_results', help='Path to scan_results.json')
+    parser = argparse.ArgumentParser(description='Update offset headers from confirmed results')
+    parser.add_argument('results', nargs='+',
+                        help='Path(s) to results JSON files (scan_results.json, resolved.json, etc.)')
     parser.add_argument('--eqlib-path', default=None,
                         help='Path to eqlib offsets directory')
     parser.add_argument('--dry-run', action='store_true',
@@ -155,13 +160,27 @@ def main():
     else:
         offsets_dir = os.path.join(repo_root, 'src', 'eqlib', 'include', 'eqlib', 'offsets')
 
-    print(f"Loading scan results from {args.scan_results}...")
-    new_offsets, stats = load_scan_results(args.scan_results)
+    # Load all result files
+    all_offsets = {}
+    total_stats = {'confirmed': 0, 'high': 0, 'low': 0, 'not_found': 0, 'other': 0}
 
-    print(f"\nScan results: {stats['high']} high confidence, "
-          f"{stats['low']} low confidence, "
-          f"{stats['not_found']} not found")
-    print(f"Total offsets to update: {len(new_offsets)}\n")
+    for filepath in args.results:
+        print(f"Loading {filepath}...")
+        offsets, stats = load_results(filepath)
+        all_offsets.update(offsets)
+        for k in total_stats:
+            total_stats[k] += stats[k]
+
+    print(f"\nResults summary:")
+    print(f"  Confirmed:  {total_stats['confirmed']}")
+    print(f"  High:       {total_stats['high']} (not applied, change to \"confirmed\" to apply)")
+    print(f"  Low:        {total_stats['low']} (not applied, change to \"confirmed\" to apply)")
+    print(f"  Not found:  {total_stats['not_found']}")
+    print(f"\nOffsets to update: {len(all_offsets)}\n")
+
+    if len(all_offsets) == 0:
+        print("No confirmed offsets to apply. Mark offsets as \"confirmed\" in the JSON to apply them.")
+        return 0
 
     if args.dry_run:
         print("DRY RUN - no files will be modified\n")
@@ -173,7 +192,7 @@ def main():
     for header in headers:
         filepath = os.path.join(offsets_dir, header)
         print(f"Processing {header}...")
-        count = update_header(filepath, new_offsets, args.dry_run)
+        count = update_header(filepath, all_offsets, args.dry_run)
         total_updated += count
         print(f"  Updated {count} offsets")
 
@@ -184,13 +203,10 @@ def main():
 
     print(f"\nTotal: {total_updated} offsets updated across all files")
 
-    if stats['not_found'] > 0:
-        print(f"\nWARNING: {stats['not_found']} offsets could not be found. "
-              f"These must be updated manually.")
-
-    if stats['low'] > 0:
-        print(f"WARNING: {stats['low']} offsets had low confidence (multiple matches). "
-              f"Review these carefully.")
+    unconfirmed = total_stats['high'] + total_stats['low']
+    if unconfirmed > 0:
+        print(f"\nNOTE: {unconfirmed} offsets are not yet confirmed. "
+              f"Review and change their confidence to \"confirmed\" to apply them.")
 
 
 if __name__ == '__main__':
